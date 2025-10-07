@@ -1,0 +1,62 @@
+FROM blender:latest
+WORKDIR /app
+COPY . .
+RUN apt-get update && apt-get install -y nodejs npm
+RUN npm install
+EXPOSE 3000
+CMD ["npm", "start"]
+{
+  "name": "blender-worker",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "multer": "^1.4.5-lts.1",
+    "node-fetch": "^3.3.2"
+  }
+}
+import express from "express";
+import multer from "multer";
+import { execSync } from "child_process";
+import fs from "fs";
+
+const app = express();
+const upload = multer({ dest: "uploads/" });
+
+app.post("/convert", upload.single("file"), async (req, res) => {
+  try {
+    const inputPath = req.file.path;
+    const outputPath = inputPath + ".blend";
+
+    execSync(`blender --background --python save_as_blend.py -- ${inputPath} ${outputPath}`);
+
+    const fileBuffer = fs.readFileSync(outputPath);
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.setHeader("Content-Disposition", "attachment; filename=result.blend");
+    res.send(fileBuffer);
+
+    fs.unlinkSync(inputPath);
+    fs.unlinkSync(outputPath);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro ao converter o arquivo" });
+  }
+});
+
+app.get("/", (req, res) => {
+  res.send("Blender Worker ativo 🚀");
+});
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => console.log(`Servidor rodando na porta ${port}`));
+import bpy, sys
+
+input_path = sys.argv[sys.argv.index("--")+1]
+output_path = sys.argv[sys.argv.index("--")+2]
+
+bpy.ops.wm.read_factory_settings(use_empty=True)
+bpy.ops.import_scene.gltf(filepath=input_path)
+bpy.ops.wm.save_as_mainfile(filepath=output_path)
